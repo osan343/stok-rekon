@@ -363,3 +363,5 @@ insert into public.transactions (tipe,tanggal,keterangan,sku,qty,catatan,created
 -- DILEWATI Penjualan baris 113: 2026-10-18 Ruskar sku=None qty=2
 -- DILEWATI Penjualan baris 144: 2026-10-22 Tomi sku=0 qty=30
 commit;
+
+notify pgrst, 'reload schema';

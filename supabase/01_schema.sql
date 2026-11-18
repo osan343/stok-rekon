@@ -197,3 +197,6 @@ grant select, insert, update on public.transactions to authenticated;
 grant select on public.history to authenticated;
 revoke delete on public.transactions, public.history, public.products from authenticated;
 revoke insert, update on public.history from authenticated;
+
+-- Muat ulang cache API Supabase supaya tabel baru langsung terlihat
+notify pgrst, 'reload schema';
