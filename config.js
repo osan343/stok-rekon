@@ -8,8 +8,8 @@
 // JANGAN pernah menaruh kunci "service_role" di sini.
 // =====================================================================
 window.STOK_CONFIG = {
-  SUPABASE_URL: "https://XXXXXXXXXXXX.supabase.co",
-  SUPABASE_ANON_KEY: "TEMPEL-ANON-KEY-DI-SINI",
+  SUPABASE_URL: "https://vtvjpmwqgufebltrmvms.supabase.co",
+  SUPABASE_ANON_KEY: "sb_publishable_MAs4LTZFmfqyeGiYSsZbYg_ZTiPcRGw",
   // Akhiran email palsu untuk login pakai username (tidak perlu diubah)
   EMAIL_DOMAIN: "stok.local",
   NAMA_USAHA: "Stok Rekon",
