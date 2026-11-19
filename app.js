@@ -96,8 +96,6 @@ function renderNav() {
   $("#logout")?.addEventListener("click", async () => { await sb.auth.signOut(); location.hash = "#/"; });
 }
 $("#menuBtn").addEventListener("click", () => $("#nav").classList.toggle("open"));
-$("#brand").textContent = CFG.NAMA_USAHA || "Stok Rekon";
-document.title = CFG.NAMA_USAHA || "Stok Rekon";
 
 function needStaff() {
   if (!state.session) { location.hash = "#/login?next=" + encodeURIComponent(location.hash.slice(1)); return false; }

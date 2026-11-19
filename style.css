@@ -20,10 +20,11 @@ h2{font-size:1.1rem;margin:1.5rem 0 .6rem}
 .top{background:var(--brand);color:var(--brand-ink);position:sticky;top:0;z-index:20}
 .top .wrap{display:flex;align-items:center;gap:14px;min-height:54px;flex-wrap:wrap}
 .top a{color:var(--brand-ink)}
-.logo{font-weight:700;letter-spacing:.2px;font-size:1.05rem;margin-right:auto}
-.logo{display:inline-flex;align-items:center;gap:10px;line-height:1.2}
+.logo{font-weight:700;letter-spacing:.2px;font-size:1.05rem;margin-right:auto;color:#fff}
+.logo{display:inline-flex;align-items:center;gap:10px;line-height:1;height:54px}
 .logo:hover{text-decoration:none}
-.logo img{width:34px;height:34px;border-radius:6px;flex:none;box-shadow:0 0 0 1px rgba(255,255,255,.25)}
+.logo img{display:block;width:28px;height:28px;border-radius:4px;flex:none}
+.logo span{display:block;padding-top:1px}
 .logo span{opacity:1}
 .nav{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
 .nav a,.nav button{padding:6px 10px;border-radius:8px;color:var(--brand-ink);background:none;border:0;font:inherit;cursor:pointer}
@@ -178,7 +179,7 @@ details summary{cursor:pointer}
   .menu-btn{display:block}
   .logo{flex:1;min-width:0;font-size:.95rem;gap:8px}
   .logo span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .logo img{width:30px;height:30px}
+  .logo img{width:24px;height:24px}
   .top .wrap{flex-wrap:wrap}
   .nav{display:none;width:100%;flex-direction:column;align-items:stretch;padding-bottom:10px}
   .nav.open{display:flex}
