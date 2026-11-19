@@ -180,6 +180,8 @@ details summary{cursor:pointer}
   .stats.four{grid-template-columns:repeat(2,1fr)}
   .filters{grid-template-columns:1fr 1fr!important}
   .filters .q{grid-column:1/-1}
+  .filters .f-tipe{grid-column:1/-1}
+  .filters #reset{grid-column:1/-1;margin-top:8px;padding:11px;justify-content:center;border:1px solid var(--line);background:#faf8f4}
   #tbl td.d{display:none}
   #tbl td.m-sub{display:block;grid-column:1;color:var(--muted);font-size:.85rem}
   #tbl .m-only{display:inline}

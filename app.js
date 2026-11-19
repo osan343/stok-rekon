@@ -272,7 +272,7 @@ routes["transaksi"] = async (_, params) => {
     <div class="row"><a class="btn in" href="#/baru?tipe=masuk">+ Barang masuk</a><a class="btn out" href="#/baru?tipe=keluar">− Barang keluar</a></div></div>
   <div class="filters card">
     <label class="q">Cari nama, kode TRX, jenis, kode barang<input id="q" type="search" placeholder="mis. anton walnut 310, TRX-00231" value="${esc(saved.q)}"></label>
-    <label>Jenis<select id="tipe"><option value="">Semua</option><option value="masuk">Masuk</option><option value="keluar">Keluar</option></select></label>
+    <label class="f-tipe">Jenis<select id="tipe"><option value="">Semua</option><option value="masuk">Masuk</option><option value="keluar">Keluar</option></select></label>
     <label>Dari<input id="dari" type="date" value="${esc(saved.dari)}"></label><label>Sampai<input id="sampai" type="date" value="${esc(saved.sampai)}"></label>
     <button class="btn ghost" id="reset">Reset</button></div>
   <p class="small"><a href="#/transaksi${deleted ? "" : "?dihapus=1"}">${deleted ? "← Transaksi aktif" : "Lihat transaksi yang dihapus"}</a> · <a href="#" id="csv">Unduh CSV (hasil filter)</a></p>
