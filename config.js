@@ -12,5 +12,5 @@ window.STOK_CONFIG = {
   SUPABASE_ANON_KEY: "sb_publishable_MAs4LTZFmfqyeGiYSsZbYg_ZTiPcRGw",
   // Akhiran email palsu untuk login pakai username (tidak perlu diubah)
   EMAIL_DOMAIN: "stok.local",
-  NAMA_USAHA: "Stok Rekon",
+  NAMA_USAHA: "Stok Rekon Harmoni Veneer",
 };

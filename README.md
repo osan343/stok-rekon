@@ -1,4 +1,4 @@
-# Stok Rekon: GitHub Pages + Supabase
+# Stok Rekon Harmoni Veneer: GitHub Pages + Supabase
 
 Aplikasi stok veneer berbasis web dengan pelacakan transaksi.
 
