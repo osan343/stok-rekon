@@ -3,9 +3,9 @@
 Aplikasi stok veneer berbasis web dengan pelacakan transaksi.
 
 - **Halaman Stok** terbuka untuk umum tanpa login. Ada pencarian ("walnut kembang 310 kain", "026C") dan filter jenis, panjang, kain/polos.
-- **Pekerja** login untuk input, edit, hapus, dan pulihkan barang masuk/keluar.
+- **Karyawan** login untuk input, edit, hapus, dan pulihkan barang masuk/keluar.
 - Setiap transaksi punya **kode lacak** (`TRX-00231`) dengan riwayat lengkap: dibuat oleh siapa, diubah apa saja (nilai lama → baru), dihapus oleh siapa dan alasannya.
-- **Admin** bisa mengaktifkan akun pekerja, mengubah peran, mengelola produk, melihat semua aktivitas, dan mengunduh CSV.
+- **Admin** bisa mengaktifkan akun karyawan, mengubah peran, mengelola produk, melihat semua aktivitas, dan mengunduh CSV.
 
 Biaya: **gratis**. GitHub Pages dan Supabase paket Free sudah cukup untuk pemakaian toko.
 
@@ -13,6 +13,7 @@ Biaya: **gratis**. GitHub Pages dan Supabase paket Free sudah cukup untuk pemaka
 index.html  app.js  style.css  config.js   ← website (diunggah ke GitHub)
 supabase/01_schema.sql                     ← struktur database + keamanan
 supabase/02_data_awal.sql                  ← data dari Stok_Rekon.xlsx (67 produk, 292 transaksi)
+supabase/03_perbaikan_alasan.sql           ← pembaruan 19/11: edit & hapus wajib menulis alasan
 ```
 
 ---
@@ -29,7 +30,7 @@ supabase/02_data_awal.sql                  ← data dari Stok_Rekon.xlsx (67 pro
    Langkah ini hanya dijalankan **sekali**, karena kalau diulang transaksinya akan dobel.
 4. Buka **Authentication → Sign In / Providers → Email**:
    - Matikan **Confirm email**. Login memakai username, bukan email sungguhan.
-   - Biarkan **Allow new users to sign up** tetap menyala. Pekerja mendaftar sendiri, tapi akunnya **tidak bisa dipakai** sampai admin mengaktifkannya.
+   - Biarkan **Allow new users to sign up** tetap menyala. Karyawan mendaftar sendiri, tapi akunnya **tidak bisa dipakai** sampai admin mengaktifkannya.
 5. Buka **Project Settings → API** (atau **Data API**). Salin:
    - **Project URL**
    - **anon public** key (bukan service_role!)
@@ -55,21 +56,22 @@ Kunci *anon* aman dipasang di website publik. Data tetap terlindungi oleh aturan
 ## Langkah 4: Buat akun admin (lakukan SEGERA)
 
 Akun **pertama** yang mendaftar otomatis menjadi **admin**. Jadi:
-1. Buka website, klik **Login pekerja → Daftar**, lalu isi nama, username, dan password Anda.
-2. Setelah itu baru bagikan link ke pekerja. Mereka daftar sendiri, lalu Anda aktifkan di menu **Pengguna**.
+1. Buka website, klik **Login karyawan → Daftar**, lalu isi nama, username, dan password Anda.
+2. Setelah itu baru bagikan link ke karyawan. Mereka daftar sendiri, lalu Anda aktifkan di menu **Pengguna**.
 
 ---
 
 ## Pemakaian sehari-hari
 - **Input**: menu **+ Input**. Pilih Masuk atau Keluar, ketik nama barang, isi jumlah dan nama pembeli.
   Tombol **Simpan & input lagi** mempercepat pemindahan isi buku catatan.
+- **Edit / hapus**: wajib menulis alasan di kolom **Catatan**, minimal 10 karakter. Aturan ini juga dijaga oleh database, dan alasannya tampil di riwayat pelacakan.
 - **Lacak**: di menu Transaksi, ketik kode `TRX-00231` atau nama pembeli. Klik kode untuk melihat riwayatnya.
-- **Lupa password pekerja**: buka Supabase → **SQL Editor** dan jalankan perintah berikut (ganti username dan password barunya):
+- **Lupa password karyawan**: buka Supabase → **SQL Editor** dan jalankan perintah berikut (ganti username dan password barunya):
   ```sql
   update auth.users set encrypted_password = crypt('passwordbaru123', gen_salt('bf'))
   where email = 'udin@stok.local';
   ```
-  Pekerja yang masih bisa login dapat mengganti password sendiri di menu **Akun**.
+  Karyawan yang masih bisa login dapat mengganti password sendiri di menu **Akun**.
 - **Backup**: di menu Transaksi, klik **Unduh CSV**. Supabase paket Free juga menyimpan backup harian.
 
 ## Hal yang perlu diketahui

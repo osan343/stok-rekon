@@ -16,6 +16,7 @@ const tgl = (s) => { if (!s) return "-"; const [y, m, d] = String(s).slice(0, 10
 const waktu = (s) => s ? new Date(s).toLocaleString("id-ID", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "-";
 const today = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
 const code = (id) => "TRX-" + String(id).padStart(5, "0");
+const roleLbl = (r) => (r === "admin" ? "admin" : "karyawan");
 const kainLbl = (k) => (k === "Y" ? "Kain" : "Polos");
 const kainBadge = (k) => `<span class="badge ${k === "Y" ? "b-kain" : "b-polos"}">${kainLbl(k)}</span>`;
 const tipeBadge = (t) => `<span class="badge ${t === "masuk" ? "b-in" : "b-out"}">${t}</span>`;
@@ -53,15 +54,32 @@ async function fetchAll(build, max = 20000) {
 }
 
 // ------------------------------------------------------------ auth state
-const state = { session: null, me: null };
+const state = { session: null, me: null, meError: null };
 const isStaff = () => !!state.me?.aktif;
 const isAdmin = () => isStaff() && state.me.role === "admin";
 
-async function loadMe() {
-  state.me = null;
-  if (!state.session) return;
-  const { data } = await sb.from("profiles").select("*").eq("id", state.session.user.id).maybeSingle();
-  state.me = data || null;
+// Muat profil akun. Dicoba 2x; jika token kedaluwarsa, sesi disegarkan dulu.
+async function fetchMe() {
+  if (!state.session) { state.me = null; state.meError = null; return; }
+  let lastErr = null;
+  for (let i = 0; i < 2; i++) {
+    const { data, error } = await sb.from("profiles").select("*").eq("id", state.session.user.id).maybeSingle();
+    if (!error) { state.me = data || null; state.meError = null; return; }
+    lastErr = error;
+    try { const r = await sb.auth.refreshSession(); if (r.data?.session) state.session = r.data.session; } catch {}
+  }
+  state.meError = lastErr;   // jangan anggap "belum aktif" kalau sebenarnya gagal memuat
+}
+// Semua perubahan sesi diproses berurutan supaya tidak saling menimpa.
+let authQueue = Promise.resolve();
+function setSession(session) {
+  authQueue = authQueue.then(async () => {
+    if (session?.user?.id !== state.session?.user?.id) state.me = null;
+    state.session = session;
+    await fetchMe();
+    renderNav();
+  });
+  return authQueue;
 }
 
 function renderNav() {
@@ -73,7 +91,7 @@ function renderNav() {
     if (isAdmin()) html += a("produk-admin", "Produk", "produk-admin") + a("pengguna", "Pengguna", "pengguna");
   }
   if (state.session) html += a("akun", "👤 " + esc(state.me?.nama || "Akun"), "akun") + `<button id="logout">Keluar</button>`;
-  else html += a("login", "Login pekerja", "login");
+  else html += a("login", "Login karyawan", "login");
   $("#nav").innerHTML = html;
   $("#logout")?.addEventListener("click", async () => { await sb.auth.signOut(); location.hash = "#/"; });
 }
@@ -83,7 +101,13 @@ document.title = CFG.NAMA_USAHA || "Stok Rekon";
 
 function needStaff() {
   if (!state.session) { location.hash = "#/login?next=" + encodeURIComponent(location.hash.slice(1)); return false; }
-  if (!isStaff()) { view.innerHTML = `<div class="card empty"><h1>Akun belum aktif</h1><p>Akun <b>${esc(state.me?.username || "")}</b> menunggu diaktifkan oleh admin.</p></div>`; return false; }
+  if (!isStaff()) {
+    view.innerHTML = state.meError
+      ? `<div class="card empty"><h1>Gagal memuat akun</h1><p>Periksa koneksi internet, lalu coba lagi.</p><button class="btn pri" id="recheck">Coba lagi</button></div>`
+      : `<div class="card empty"><h1>Akun belum aktif</h1><p>Akun <b>${esc(state.me?.username || "")}</b> menunggu diaktifkan oleh admin.</p><button class="btn pri" id="recheck">Cek lagi</button></div>`;
+    $("#recheck").addEventListener("click", async () => { await setSession(state.session); route(); });
+    return false;
+  }
   return true;
 }
 function needAdmin() {
@@ -171,7 +195,7 @@ routes["produk"] = async ([sku]) => {
       ${tx.map((t) => { const row = `<tr class="click" data-id="${t.id}"><td class="code"><a href="#/trx/${t.id}">${code(t.id)}</a></td><td>${tgl(t.tanggal)}</td><td>${tipeBadge(t.tipe)}</td><td>${esc(t.keterangan)}</td>
         <td class="num">${t.tipe === "masuk" ? "+" : "−"}${angka(t.qty)}</td><td class="num muted">${angka(saldo)}</td></tr>`;
         saldo += t.tipe === "masuk" ? -t.qty : t.qty; return row; }).join("")}</tbody></table></div>` : `<div class="card empty">Belum ada transaksi.</div>`);
-  } else hist = `<p class="muted">Login sebagai pekerja untuk melihat riwayat transaksi barang ini.</p>`;
+  } else hist = `<p class="muted">Login sebagai karyawan untuk melihat riwayat transaksi barang ini.</p>`;
   view.innerHTML = `<p><a href="#/">← Kembali ke stok</a></p>
   <div class="head"><div><h1>${esc(s.jenis)} ${esc(s.urat)} ${s.panjang ?? ""}</h1>
     <div class="row"><span class="code">${esc(s.kode || "tanpa kode")}</span><span class="muted">SKU ${s.sku}</span>${kainBadge(s.kain)}${s.aktif ? "" : '<span class="badge b-del">nonaktif</span>'}</div></div>
@@ -187,7 +211,7 @@ routes["login"] = async (_, params) => {
   if (state.session && isStaff()) { location.hash = "#/transaksi"; return; }
   const daftar = params.get("daftar") === "1";
   view.innerHTML = `<div class="card narrow">
-    <h1>${daftar ? "Daftar akun pekerja" : "Login pekerja"}</h1>
+    <h1>${daftar ? "Daftar akun karyawan" : "Login karyawan"}</h1>
     <p class="muted small">${daftar ? "Setelah mendaftar, minta admin mengaktifkan akun Anda." : "Untuk input dan edit barang masuk/keluar. Lihat stok tidak perlu login."}</p>
     <form class="form" id="f">
       ${daftar ? `<label>Nama<input name="nama" required></label>` : ""}
@@ -211,7 +235,7 @@ routes["login"] = async (_, params) => {
         const { error } = await sb.auth.signInWithPassword({ email, password: fd.get("p") });
         if (error) throw new Error(/invalid/i.test(error.message) ? "Username atau password salah." : error.message);
       }
-      await refreshSession();
+      await setSession((await sb.auth.getSession()).data.session);
       const next = params.get("next");
       location.hash = next && next.startsWith("/") ? "#" + next : isStaff() ? "#/transaksi" : "#/akun";
     } catch (err) { fail(err); } finally { btn.disabled = false; }
@@ -221,7 +245,7 @@ routes["login"] = async (_, params) => {
 routes["akun"] = async () => {
   if (!state.session) { location.hash = "#/login"; return; }
   const me = state.me || {};
-  view.innerHTML = `<h1>Akun saya</h1><p class="muted">${esc(me.nama)} · <span class="code">${esc(me.username)}</span> · ${esc(me.role)} · ${me.aktif ? "aktif" : '<b class="warn-t">menunggu diaktifkan admin</b>'}</p>
+  view.innerHTML = `<h1>Akun saya</h1><p class="muted">${esc(me.nama)} · <span class="code">${esc(me.username)}</span> · ${esc(roleLbl(me.role))} · ${me.aktif ? "aktif" : '<b class="warn-t">menunggu diaktifkan admin</b>'}</p>
   <div class="card narrow left"><h2 class="mt0">Ganti password</h2><form class="form" id="f">
     <label>Password baru<input name="p" type="password" minlength="6" required autocomplete="new-password"></label>
     <label>Ulangi password baru<input name="p2" type="password" minlength="6" required autocomplete="new-password"></label>
@@ -307,12 +331,16 @@ async function txForm(t) {
       <div class="chosen" id="chosen"><span id="cl"></span><span id="cs" class="muted"></span></div></div>
     <label>Jumlah (lembar)<input type="number" name="qty" min="1" step="1" inputmode="numeric" required value="${esc(d.qty)}"></label>
     <label><span id="kl">Keterangan</span> <span class="hint" id="kh"></span><input name="keterangan" list="names" value="${esc(d.keterangan)}"></label>
-    <label>Catatan <span class="hint">opsional</span><textarea name="catatan" rows="2">${esc(d.catatan)}</textarea></label>
+    ${editing
+      ? `<label>Catatan: alasan perubahan <span class="hint">wajib, minimal 10 karakter</span>
+          <textarea name="catatan" rows="2" required minlength="10" placeholder="mis. salah input jumlah, seharusnya 8 lembar"></textarea>
+          ${t.catatan ? `<span class="hint">Catatan sebelumnya: ${esc(t.catatan)}</span>` : ""}</label>`
+      : `<label>Catatan <span class="hint">opsional</span><textarea name="catatan" rows="2">${esc(d.catatan)}</textarea></label>`}
     <div class="flash warn" id="warn" hidden></div>
     <div class="row"><button class="btn pri" data-a="save">Simpan</button>${editing ? "" : `<button class="btn" data-a="again">Simpan &amp; input lagi</button>`}
       <a class="btn ghost" href="${editing ? "#/trx/" + t.id : "#/transaksi"}">Batal</a></div>
   </form><datalist id="names">${names.map((n) => `<option value="${esc(n)}">`).join("")}</datalist></div>
-  ${editing ? `<div class="card narrow left mt"><form class="row" id="del"><input name="alasan" placeholder="Alasan hapus (opsional)" class="grow"><button class="btn danger">Hapus transaksi</button></form></div>` : ""}`;
+  ${editing ? `<div class="card narrow left mt"><form class="row" id="del"><input name="alasan" placeholder="Alasan hapus (wajib, min. 10 karakter)" class="grow" required minlength="10"><button class="btn danger">Hapus transaksi</button></form></div>` : ""}`;
   const form = $("#f"); let sku = d.sku, act = 0, shown = [];
   form.tipe.value = d.tipe;
   const pick = $("#pick"), list = $("#plist");
@@ -349,10 +377,11 @@ async function txForm(t) {
       keterangan: form.keterangan.value.trim(), catatan: form.catatan.value.trim() };
     if (!(row.qty > 0)) return flash("Jumlah harus lebih dari 0.", "error");
     if (row.tipe === "keluar" && !row.keterangan) return flash("Isi nama pembeli/tujuan.", "error");
+    if (editing && row.catatan.length < 10) { form.catatan.focus(); return flash("Tulis alasan perubahan di kolom Catatan (minimal 10 karakter).", "error"); }
     $$("button", form).forEach((b) => (b.disabled = true));
     try {
       if (editing) {
-        const changed = Object.keys(row).some((k) => String(row[k]) !== String(t[k] ?? ""));
+        const changed = ["tipe", "tanggal", "sku", "qty", "keterangan"].some((k) => String(row[k]) !== String(t[k] ?? ""));
         if (!changed) { flash("Tidak ada perubahan.", "warn"); location.hash = "#/trx/" + t.id; return; }
         await q(sb.from("transactions").update(row).eq("id", t.id), "Gagal menyimpan");
         flash("Perubahan disimpan."); location.hash = "#/trx/" + t.id;
@@ -367,8 +396,10 @@ async function txForm(t) {
   });
   $("#del")?.addEventListener("submit", async (e) => {
     e.preventDefault();
+    const alasan = e.target.alasan.value.trim();
+    if (alasan.length < 10) { e.target.alasan.focus(); return flash("Tulis alasan hapus minimal 10 karakter.", "error"); }
     if (!confirm(`Hapus ${code(t.id)}? Transaksi bisa dipulihkan lagi.`)) return;
-    await q(sb.from("transactions").update({ dihapus: true, alasan: e.target.alasan.value.trim() || null }).eq("id", t.id), "Gagal menghapus");
+    await q(sb.from("transactions").update({ dihapus: true, catatan: alasan, alasan }).eq("id", t.id), "Gagal menghapus");
     flash(`${code(t.id)} dihapus (bisa dipulihkan).`); location.hash = "#/trx/" + t.id;
   });
   show(); check();
@@ -431,7 +462,7 @@ routes["riwayat"] = async () => {
   const body = await Promise.all(rows.map(async (h) => `<tr><td class="small nw">${waktu(h.waktu)}</td><td>${esc(h.profiles?.nama || "-")}</td>
     <td><span class="badge ${h.aksi === "dihapus" ? "b-out" : h.aksi === "dibuat" ? "b-in" : "b-admin"}">${h.aksi}</span></td>
     <td><a class="code" href="#/trx/${h.transaction_id}">${code(h.transaction_id)}</a> <span class="small muted">${esc(h.transactions?.tipe)} ${angka(h.transactions?.qty)} · ${esc(h.transactions?.keterangan)} · ${esc(h.transactions?.products?.jenis)} ${esc(h.transactions?.products?.kode || "")}</span></td>
-    <td class="small">${h.aksi === "diubah" ? await describeChanges(h.perubahan) : esc(h.alasan || "")}</td></tr>`));
+    <td class="small">${h.aksi === "diubah" ? await describeChanges(h.perubahan) : ""}${h.alasan ? `<div>Alasan: ${esc(h.alasan)}</div>` : ""}</td></tr>`));
   view.innerHTML = `<h1>Riwayat aktivitas</h1><p class="muted small">Siapa menginput, mengubah, menghapus transaksi (300 terakhir).</p>
   ${rows.length ? `<div class="tblwrap"><table class="tbl"><thead><tr><th>Waktu</th><th>Oleh</th><th>Aksi</th><th>Transaksi</th><th>Detail</th></tr></thead><tbody>${body.join("")}</tbody></table></div>` : `<div class="card empty">Belum ada aktivitas.</div>`}`;
 };
@@ -477,17 +508,17 @@ routes["pengguna"] = async () => {
   const users = await q(sb.from("profiles").select("*").order("aktif").order("username"), "Memuat pengguna");
   const pending = users.filter((u) => !u.aktif).length;
   view.innerHTML = `<h1>Akun pengguna</h1>
-  <p class="muted small"><b>Pekerja</b> bisa input, edit, hapus/pulihkan transaksi. <b>Admin</b> juga bisa mengelola produk dan akun.</p>
-  <div class="card mb small"><b>Menambah pekerja:</b> minta pekerja membuka <a href="#/login?daftar=1">halaman Daftar</a> lalu aktifkan akunnya di sini.
+  <p class="muted small"><b>Karyawan</b> bisa input, edit, hapus/pulihkan transaksi (edit &amp; hapus wajib menulis alasan). <b>Admin</b> juga bisa mengelola produk dan akun.</p>
+  <div class="card mb small"><b>Menambah karyawan:</b> minta karyawan membuka <a href="#/login?daftar=1">halaman Daftar</a> lalu aktifkan akunnya di sini.
     Lupa password: reset dari Supabase → Authentication → Users (email = <span class="code">username@${esc(CFG.EMAIL_DOMAIN || "stok.local")}</span>).</div>
   ${pending ? `<div class="flash warn">${pending} akun menunggu diaktifkan.</div>` : ""}
   <div class="tblwrap"><table class="tbl"><thead><tr><th>Nama</th><th>Username</th><th>Peran</th><th>Status</th><th>Terdaftar</th><th>Aksi</th></tr></thead><tbody>
   ${users.map((u) => `<tr data-id="${u.id}"><td><b>${esc(u.nama)}</b></td><td class="code">${esc(u.username)}</td>
-    <td><span class="badge ${u.role === "admin" ? "b-admin" : "b-polos"}">${u.role}</span></td>
+    <td><span class="badge ${u.role === "admin" ? "b-admin" : "b-polos"}">${roleLbl(u.role)}</span></td>
     <td>${u.aktif ? "Aktif" : '<b class="warn-t">Menunggu</b>'}</td><td class="small muted">${waktu(u.created_at)}</td>
     <td>${u.id === state.me.id ? '<span class="muted small">(Anda)</span>' : `<div class="row">
       <button class="btn sm ${u.aktif ? "danger" : "in"}" data-a="aktif">${u.aktif ? "Nonaktifkan" : "Aktifkan"}</button>
-      <button class="btn sm" data-a="role">Jadikan ${u.role === "admin" ? "pekerja" : "admin"}</button></div>`}</td></tr>`).join("")}</tbody></table></div>`;
+      <button class="btn sm" data-a="role">Jadikan ${u.role === "admin" ? "karyawan" : "admin"}</button></div>`}</td></tr>`).join("")}</tbody></table></div>`;
   $$("button[data-a]").forEach((b) => b.addEventListener("click", async () => {
     const id = b.closest("tr").dataset.id, u = users.find((x) => x.id === id);
     const patch = b.dataset.a === "aktif" ? { aktif: !u.aktif } : { role: u.role === "admin" ? "pekerja" : "admin" };
@@ -496,7 +527,12 @@ routes["pengguna"] = async () => {
 };
 
 // ------------------------------------------------------------ router
+let routeSeq = 0;
 async function route() {
+  const seq = ++routeSeq;
+  await authQueue;                                   // tunggu profil akun selesai dimuat
+  if (state.session && !isStaff()) await setSession(state.session);   // status bisa saja baru diaktifkan admin
+  if (seq !== routeSeq) return;                      // sudah ada navigasi yang lebih baru
   const [path, qs] = location.hash.replace(/^#\/?/, "").split("?");
   const [name, ...args] = path.split("/");
   $("#nav").classList.remove("open");
@@ -506,20 +542,21 @@ async function route() {
   catch (e) { if (!$("#flash").innerHTML) fail(e); if (view.textContent.trim() === "Memuat…") view.innerHTML = `<div class="card empty">Gagal memuat data. Periksa koneksi lalu muat ulang.</div>`; }
   window.scrollTo(0, 0);
 }
-async function refreshSession() {
-  const { data } = await sb.auth.getSession();
-  state.session = data.session; await loadMe(); renderNav();
-}
 
 async function start() {
   if (!sb) {
     view.innerHTML = `<div class="card narrow"><h1>Belum dihubungkan</h1><p>Isi <span class="code">SUPABASE_URL</span> dan <span class="code">SUPABASE_ANON_KEY</span> di file <span class="code">config.js</span>. Lihat panduan README.</p></div>`;
     return;
   }
-  await refreshSession();
-  sb.auth.onAuthStateChange(async (ev, session) => {
-    if (ev === "SIGNED_OUT" || (session?.user?.id !== state.session?.user?.id)) { state.session = session; await loadMe(); route(); }
-    else state.session = session;
+  await setSession((await sb.auth.getSession()).data.session);
+  // Catatan: jangan memanggil query Supabase langsung di dalam callback ini (bisa macet);
+  // pekerjaan ditunda dengan setTimeout.
+  sb.auth.onAuthStateChange((ev, session) => {
+    setTimeout(() => {
+      const changed = ev === "SIGNED_OUT" || session?.user?.id !== state.session?.user?.id;
+      if (changed) setSession(session).then(route);
+      else state.session = session;
+    }, 0);
   });
   window.addEventListener("hashchange", route);
   route();

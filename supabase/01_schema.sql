@@ -95,6 +95,19 @@ begin
   new.created_at := old.created_at;
   new.updated_by := auth.uid();
   new.updated_at := now();
+  -- Edit data atau hapus oleh pengguna: alasan wajib ditulis di kolom catatan (min. 10 karakter)
+  if auth.uid() is not null and (
+       (new.dihapus and not old.dihapus)
+       or (new.tipe, new.tanggal, new.keterangan, new.sku, new.qty)
+          is distinct from (old.tipe, old.tanggal, old.keterangan, old.sku, old.qty)) then
+    if length(btrim(coalesce(new.catatan, ''))) < 10 or new.catatan is not distinct from old.catatan then
+      raise exception 'Alasan wajib ditulis di kolom catatan (minimal 10 karakter).'
+        using errcode = 'check_violation';
+    end if;
+  end if;
+  if new.dihapus and not old.dihapus then
+    new.alasan := new.catatan;
+  end if;
   return new;
 end $$;
 
@@ -125,9 +138,12 @@ begin
       diff := diff || jsonb_build_object(col, jsonb_build_array(to_jsonb(old) -> col, to_jsonb(new) -> col));
     end if;
   end loop;
+  if new.dihapus is distinct from old.dihapus then
+    diff := diff - 'catatan';   -- alasan hapus sudah tercatat di baris 'dihapus'
+  end if;
   if diff <> '{}'::jsonb then
-    insert into history (transaction_id, aksi, perubahan, user_id)
-    values (new.id, 'diubah', diff, auth.uid());
+    insert into history (transaction_id, aksi, perubahan, alasan, user_id)
+    values (new.id, 'diubah', diff, case when diff ? 'catatan' then new.catatan end, auth.uid());
   end if;
   return new;
 end $$;
