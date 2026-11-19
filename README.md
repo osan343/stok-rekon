@@ -14,6 +14,7 @@ index.html  app.js  style.css  config.js   ← website (diunggah ke GitHub)
 supabase/01_schema.sql                     ← struktur database + keamanan
 supabase/02_data_awal.sql                  ← data dari Stok_Rekon.xlsx (67 produk, 292 transaksi)
 supabase/03_perbaikan_alasan.sql           ← pembaruan 19/11: edit & hapus wajib menulis alasan
+supabase/04_gambar.sql                     ← tempat penyimpanan foto per kode rekon
 ```
 
 ---
@@ -73,6 +74,13 @@ Akun **pertama** yang mendaftar otomatis menjadi **admin**. Jadi:
   ```
   Karyawan yang masih bisa login dapat mengganti password sendiri di menu **Akun**.
 - **Backup**: di menu Transaksi, klik **Unduh CSV**. Supabase paket Free juga menyimpan backup harian.
+
+## Foto per kode rekon
+- Halaman Stok punya dua tampilan: **Daftar** (bawaan) dan **Gambar**. Pengunjung bisa memilih sendiri, dan pilihannya diingat di perangkatnya.
+- Satu foto berlaku untuk satu kode rekon (semua panjang dan kain/polos), mis. `026C · White Oak Kembang`.
+- **Mengunggah foto (admin):** jalankan `supabase/04_gambar.sql` sekali di SQL Editor. Setelah itu buka halaman Stok, klik gambar sebuah kode, lalu klik **Unggah foto** (bisa langsung dari kamera HP).
+  Foto otomatis diperkecil sebelum diunggah. Penyimpanan Supabase Free (1 GB) cukup untuk ribuan foto.
+- Kode yang belum punya foto memakai motif contoh: warnanya mengikuti jenis kayu, polanya mengikuti urat.
 
 ## Hal yang perlu diketahui
 - Supabase Free **menjeda project yang tidak dipakai selama 7 hari**. Kalau aplikasinya dibuka setiap hari, project tidak akan dijeda. Kalau sempat terjeda, buka dashboard Supabase lalu klik *Restore*.

@@ -128,14 +128,157 @@ const sortProd = (a, b) => a.jenis.localeCompare(b.jenis) || String(a.kode || ""
 // ============================================================ PAGES
 const routes = {};
 
+// ------------------------------------------------------------ Gambar per kode rekon
+// Satu gambar berlaku untuk satu kode rekon (semua panjang & kain/polos).
+// Urutan sumber: foto yang diunggah admin (Supabase Storage) → file di repo (gambar/index.json) → motif contoh.
+const gkey = (r) => (r.kode ? `${r.kode}|${r.jenis}|${r.urat || ""}` : `sku:${r.sku}`);
+const IMG = { uploaded: null, repo: null, tex: {} };
+async function loadImages(force) {
+  if (IMG.uploaded && !force) return;
+  IMG.uploaded = {};
+  try {
+    const { data, error } = await sb.from("gambar_kode").select("kunci,path,updated_at");
+    if (!error) for (const g of data) IMG.uploaded[g.kunci] = { path: g.path, url: sb.storage.from("gambar").getPublicUrl(g.path).data.publicUrl };
+  } catch {}
+  if (IMG.repo === null) {
+    IMG.repo = {};
+    try { const r = await fetch("gambar/index.json", { cache: "no-cache" }); if (r.ok) IMG.repo = await r.json(); } catch {}
+  }
+}
+const hasPhoto = (key) => !!(IMG.uploaded?.[key] || IMG.repo?.[key]);
+function imgUrl(g) {
+  const key = g.key || gkey(g);
+  return IMG.uploaded?.[key]?.url || (IMG.repo?.[key] ? IMG.repo[key] + "?v=" + (IMG.repo._v || "") : null) || texture(g);
+}
+
+const TEX_BASE = { "walnut": [88, 56, 37], "white oak": [206, 172, 126], "oak": [183, 140, 92], "jati": [164, 106, 48], "white ash": [226, 211, 180],
+  "ebony": [48, 40, 35], "rosewood": [112, 48, 36], "bamboo net": [199, 164, 100], "dragon": [122, 90, 60], "mappa": [176, 122, 74], "marble": [142, 132, 120] };
+function seeded(seed) { let h = 2166136261; for (const c of seed) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+  return () => ((h = Math.imul(h ^ (h >>> 15), 2246822507), h = Math.imul(h ^ (h >>> 13), 3266489909), (h ^= h >>> 16) >>> 0) / 4294967296); }
+function texture(g) {
+  const key = `${g.jenis}|${g.urat || ""}|${g.kode || ""}`;
+  if (IMG.tex[key]) return IMG.tex[key];
+  const W = 480, H = 360, c = document.createElement("canvas"); c.width = W; c.height = H;
+  const x = c.getContext("2d"), r = seeded(key), u = String(g.urat || "").toLowerCase(), J = String(g.jenis || "").toLowerCase();
+  let [R, G, B] = TEX_BASE[J] || [170, 130, 90];
+  if (/silver/i.test(g.kode || "")) [R, G, B] = [168, 160, 150];
+  if (u === "washed") [R, G, B] = [R + 30, G + 30, B + 34].map((v) => Math.min(v, 240));
+  const col = (d, a = 1) => `rgba(${Math.max(0, R + d) | 0},${Math.max(0, G + d) | 0},${Math.max(0, B + d) | 0},${a})`;
+  const grad = x.createLinearGradient(0, 0, W, H); grad.addColorStop(0, col(10)); grad.addColorStop(1, col(-12)); x.fillStyle = grad; x.fillRect(0, 0, W, H);
+  x.lineCap = "round";
+  const line = (fn) => { x.beginPath(); fn(); x.stroke(); };
+  if (J === "bamboo net" || u === "kotak") {
+    const s = 36;
+    for (let i = 0; i < W / s + 1; i++) for (let j = 0; j < H / s + 1; j++) {
+      x.fillStyle = col((i + j) % 2 ? -22 : 14, 0.9); x.fillRect(i * s + 2, j * s + 2, s - 4, s - 4); x.strokeStyle = col(-40, 0.35); x.lineWidth = 1;
+      for (let k = 6; k < s - 4; k += 6) line(() => ((i + j) % 2 ? (x.moveTo(i * s + k, j * s + 3), x.lineTo(i * s + k, j * s + s - 3)) : (x.moveTo(i * s + 3, j * s + k), x.lineTo(i * s + s - 3, j * s + k))));
+    }
+  } else if (J === "marble") {
+    for (let i = 0; i < 14; i++) { x.strokeStyle = i % 3 ? col(-35, 0.35) : "rgba(240,236,228,.5)"; x.lineWidth = 0.6 + r() * 2.4;
+      line(() => { let px = r() * W, py = 0; x.moveTo(px, py); while (py < H) { px += (r() - 0.5) * 60; py += 20 + r() * 30; x.lineTo(px, py); } }); }
+  } else if (u === "burl") {
+    for (let i = 0; i < 90; i++) { const cx = r() * W, cy = r() * H, rr = 4 + r() * 22;
+      for (let k = rr; k > 2; k -= 3 + r() * 3) { x.strokeStyle = col(-30 - r() * 25, 0.35); x.lineWidth = 1 + r(); line(() => x.ellipse(cx, cy, k * (1 + r() * 0.6), k, r() * 3, 0, 7)); } }
+  } else if (u === "kembang") {
+    for (let X = -10; X < W + 10; X += 4 + r() * 6) { x.strokeStyle = col(-15 - r() * 25, 0.25); x.lineWidth = 0.6 + r() * 1.4; line(() => { x.moveTo(X, 0); x.lineTo(X + (r() - 0.5) * 4, H); }); }
+    const n = 1 + Math.floor(r() * 2), cxs = n === 1 ? [W * (0.4 + r() * 0.2)] : [W * 0.3, W * 0.72];
+    for (const cx of cxs) for (let k = 0; k < 22; k++) {
+      const w = 6 + k * 11, apex = H * 0.92 - k * 15 - r() * 4;
+      x.strokeStyle = col(k % 3 === 0 ? -50 : -30, k % 3 === 0 ? 0.6 : 0.38); x.lineWidth = k % 3 === 0 ? 2.4 : 1.2;
+      line(() => { x.moveTo(cx - w, H + 5); x.bezierCurveTo(cx - w * 0.95, apex + w * 0.25, cx - w * 0.25, apex, cx, apex); x.bezierCurveTo(cx + w * 0.25, apex, cx + w * 0.95, apex + w * 0.25, cx + w, H + 5); });
+    }
+  } else if (u === "sawtooth") {
+    for (let y = -20; y < H + 20; y += 10 + r() * 6) { x.strokeStyle = col(-28 - r() * 20, 0.4); x.lineWidth = 1 + r() * 1.5; line(() => { for (let X = 0; X <= W; X += 30) x.lineTo(X, y + ((X / 30) % 2 ? 9 : -9)); }); }
+  } else {
+    const wav = u === "semi" ? 10 : 2.5;
+    for (let X = -10; X < W + 10; X += 3 + r() * 7) { x.strokeStyle = col(-18 - r() * 35, 0.22 + r() * 0.35); x.lineWidth = 0.6 + r() * 2.2;
+      const ph = r() * 6; line(() => { for (let y = 0; y <= H; y += 12) x.lineTo(X + Math.sin(y / 70 + ph) * wav, y); }); }
+  }
+  const sh = x.createLinearGradient(0, 0, W, 0); sh.addColorStop(0, "rgba(255,255,255,0)"); sh.addColorStop(0.5, "rgba(255,255,255,.10)"); sh.addColorStop(1, "rgba(255,255,255,0)");
+  x.fillStyle = sh; x.fillRect(0, 0, W, H);
+  return (IMG.tex[key] = c.toDataURL("image/jpeg", 0.82));
+}
+
+function groupRows(rows) {
+  const m = new Map();
+  for (const r of rows) {
+    const key = gkey(r);
+    if (!m.has(key)) m.set(key, { key, kode: r.kode || "", jenis: r.jenis, urat: r.urat || "", items: [] });
+    m.get(key).items.push(r);
+  }
+  return [...m.values()];
+}
+
+// Kecilkan foto di HP sebelum diunggah (maks. 1600px, JPEG)
+async function shrinkImage(file, max = 1600) {
+  const bmp = await createImageBitmap(file);
+  const s = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const c = document.createElement("canvas"); c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  return await new Promise((res) => c.toBlob(res, "image/jpeg", 0.85));
+}
+async function uploadPhoto(g, file) {
+  const blob = await shrinkImage(file);
+  const slug = g.key.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const path = `${slug}-${Date.now()}.jpg`;
+  const up = await sb.storage.from("gambar").upload(path, blob, { contentType: "image/jpeg", cacheControl: "31536000" });
+  if (up.error) throw up.error;
+  const old = IMG.uploaded?.[g.key]?.path;
+  await q(sb.from("gambar_kode").upsert({ kunci: g.key, path, updated_by: state.session.user.id, updated_at: new Date().toISOString() }), "Gagal menyimpan foto");
+  if (old) await sb.storage.from("gambar").remove([old]);
+  await loadImages(true);
+}
+async function removePhoto(g) {
+  const old = IMG.uploaded?.[g.key]?.path; if (!old) return;
+  await q(sb.from("gambar_kode").delete().eq("kunci", g.key), "Gagal menghapus foto");
+  await sb.storage.from("gambar").remove([old]);
+  await loadImages(true);
+}
+
+// Jendela gambar besar (+ unggah foto untuk admin)
+function openPhoto(g, onChange) {
+  let m = $("#pmodal");
+  if (!m) {
+    m = document.createElement("div"); m.id = "pmodal"; m.className = "pmodal";
+    m.innerHTML = `<div class="pbox"><button class="px" aria-label="Tutup">✕</button><div class="pimg"><img alt=""></div><div class="pinfo"></div></div>`;
+    document.body.appendChild(m);
+    const close = () => m.classList.remove("open");
+    m.addEventListener("click", (e) => { if (e.target === m || e.target.closest(".px")) close(); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+    window.addEventListener("hashchange", close);
+  }
+  const render = () => {
+    const tot = g.items.reduce((a, r) => a + r.stok, 0);
+    $("img", m).src = imgUrl(g); $("img", m).alt = `${g.jenis} ${g.urat} ${g.kode}`;
+    $(".pinfo", m).innerHTML = `<div class="code muted">${esc(g.kode || "tanpa kode")}</div><h2 class="mt0" style="margin:.2rem 0 .6rem">${esc(g.jenis)} ${esc(g.urat)}</h2>
+      <table class="var">${g.items.map((it) => `<tr><td><a href="#/produk/${it.sku}">${it.panjang ?? ""} · ${kainLbl(it.kain)}</a> <span class="muted small">SKU ${it.sku}</span></td><td class="n ${stokCls(it.stok)}">${angka(it.stok)} lbr</td></tr>`).join("")}
+      <tr><td><b>Total</b></td><td class="n">${angka(tot)} lbr</td></tr></table>
+      ${hasPhoto(g.key) ? "" : `<p class="muted small">Gambar ini masih motif contoh, belum foto asli.</p>`}
+      ${isAdmin() ? `<div class="upl"><label class="btn sm pri">📷 ${IMG.uploaded?.[g.key] ? "Ganti foto" : "Unggah foto"}<input type="file" accept="image/*" hidden></label>
+        ${IMG.uploaded?.[g.key] ? `<button class="btn sm danger" data-del>Hapus foto</button>` : ""}<div class="small muted" data-st></div></div>` : ""}`;
+    $("input[type=file]", m)?.addEventListener("change", async (e) => {
+      const file = e.target.files[0]; if (!file) return;
+      const st = $("[data-st]", m); st.textContent = "Mengunggah…";
+      try { await uploadPhoto(g, file); render(); onChange?.(); flash("Foto disimpan."); } catch (err) { st.textContent = ""; fail(err, "Gagal mengunggah foto"); }
+    });
+    $("[data-del]", m)?.addEventListener("click", async () => {
+      if (!confirm("Hapus foto ini? Gambar kembali ke motif contoh.")) return;
+      await removePhoto(g); render(); onChange?.(); flash("Foto dihapus.");
+    });
+  };
+  render(); m.classList.add("open");
+}
+
 // ------------------------------------------------------------ Stok (publik)
 routes[""] = async () => {
-  const rows = (await getStok()).filter((r) => r.aktif).sort(sortProd);
+  const [all] = await Promise.all([getStok(), loadImages()]);
+  const rows = all.filter((r) => r.aktif).sort(sortProd);
   const jenis = [...new Set(rows.map((r) => r.jenis))].sort();
   const saved = store.get("stokFilter", { q: "", j: "", p: "", k: "", h: false });
+  let mode = store.get("stokTampilan", "daftar");
   view.innerHTML = `
   <div class="head"><div><h1>Stok barang</h1><div class="muted small">Jumlah lembar terkini dari semua transaksi masuk &amp; keluar.</div></div>
-    ${isStaff() ? `<div class="row"><a class="btn in" href="#/baru?tipe=masuk">+ Barang masuk</a><a class="btn out" href="#/baru?tipe=keluar">− Barang keluar</a></div>` : ""}</div>
+    <div class="row">${isStaff() ? `<a class="btn in" href="#/baru?tipe=masuk">+ Barang masuk</a><a class="btn out" href="#/baru?tipe=keluar">− Barang keluar</a>` : ""}</div></div>
   <div class="stats"><div class="stat"><b id="sTot">0</b><span>Total lembar</span></div><div class="stat"><b id="sN">0</b><span>Jenis barang</span></div><div class="stat"><b id="sNeg">0</b><span>Stok minus</span></div></div>
   <div class="search"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
     <input id="q" type="search" placeholder="Cari: walnut kembang 310 kain, 026C, jati 250…" autocomplete="off"></div>
@@ -144,15 +287,20 @@ routes[""] = async () => {
     <span class="chip-sep"></span><button class="chip" data-p="250">250</button><button class="chip" data-p="310">310</button>
     <button class="chip" data-k="Y">Kain</button><button class="chip" data-k="N">Polos</button><span class="chip-sep"></span>
     <label class="tog"><input type="checkbox" id="hide0"> Sembunyikan stok 0</label></div>
-  <div class="tblwrap"><table class="tbl cards" id="tbl"><thead><tr><th>SKU</th><th>Kode</th><th>Jenis</th><th>Urat</th><th>Panjang</th><th>Kain/Polos</th><th class="num">Stok</th></tr></thead><tbody>
+  <div class="viewbar"><div class="viewtog" id="vt"><button data-v="daftar">☰ Daftar</button><button data-v="gambar">▦ Gambar</button></div></div>
+  <div id="vDaftar"><div class="tblwrap"><table class="tbl cards withimg" id="tbl"><thead><tr><th></th><th>SKU</th><th>Kode</th><th>Jenis</th><th>Urat</th><th>Panjang</th><th>Kain/Polos</th><th class="num">Stok</th></tr></thead><tbody>
   ${rows.map((r) => `<tr class="click" data-sku="${r.sku}">
+    <td class="c-img"><img class="thumb" loading="lazy" data-key="${esc(gkey(r))}" alt=""></td>
     <td class="d">${r.sku}</td><td class="d code">${esc(r.kode || "-")}</td>
     <td class="m-main"><b>${esc(r.jenis)}</b> <span class="m-only muted">${esc(r.urat)}</span></td>
     <td class="d">${esc(r.urat)}</td><td class="d">${r.panjang ?? ""}</td><td class="d">${kainBadge(r.kain)}</td>
     <td class="m-sub">${r.panjang ?? ""} · ${kainBadge(r.kain)} · <span class="code">${esc(r.kode || "tanpa kode")}</span></td>
     <td class="num m-stok"><span class="stok ${stokCls(r.stok)}">${angka(r.stok)}</span></td></tr>`).join("")}
-  </tbody></table></div><div class="card empty" id="empty" hidden>Tidak ada barang yang cocok.</div>`;
+  </tbody></table></div></div>
+  <div id="vGambar" class="pgrid"></div>
+  <div class="card empty" id="empty" hidden>Tidak ada barang yang cocok.</div>`;
 
+  const groups = groupRows(rows);
   const f = { j: saved.j || "", p: saved.p || "", k: saved.k || "" };
   const qi = $("#q"), hide0 = $("#hide0"), trs = $$("#tbl tbody tr");
   qi.value = saved.q || ""; hide0.checked = !!saved.h;
@@ -160,13 +308,25 @@ routes[""] = async () => {
   const paint = () => $$("#chips .chip").forEach((c) => {
     for (const key of ["j", "p", "k"]) if (key in c.dataset) c.classList.toggle("on", c.dataset[key] === f[key] && (key === "j" || f[key] !== ""));
   });
+  const setThumbs = () => $$("#tbl img.thumb").forEach((im) => { const r = rows[trs.indexOf(im.closest("tr"))]; im.src = imgUrl({ ...r, key: im.dataset.key }); });
   const apply = () => {
-    const w = words(qi.value); let tot = 0, n = 0, neg = 0;
+    const w = words(qi.value); let tot = 0, n = 0, neg = 0; const okSku = new Set();
     rows.forEach((r, i) => {
       const ok = w.every((x) => hay[i].includes(x)) && (!f.j || r.jenis === f.j) && (!f.p || String(r.panjang) === f.p) && (!f.k || r.kain === f.k) && !(hide0.checked && r.stok === 0);
-      trs[i].hidden = !ok; if (ok) { tot += r.stok; n++; if (r.stok < 0) neg++; }
+      trs[i].hidden = !ok; if (ok) { okSku.add(r.sku); tot += r.stok; n++; if (r.stok < 0) neg++; }
     });
     $("#sTot").textContent = angka(tot); $("#sN").textContent = n; $("#sNeg").textContent = neg; $("#empty").hidden = n > 0;
+    if (mode === "gambar") {
+      $("#vGambar").innerHTML = groups.filter((g) => g.items.some((it) => okSku.has(it.sku))).map((g) => {
+        const its = g.items.filter((it) => okSku.has(it.sku)), sum = its.reduce((a, it) => a + it.stok, 0);
+        return `<div class="pc" data-key="${esc(g.key)}"><div class="img"><img loading="lazy" src="${imgUrl(g)}" alt="${esc(g.jenis + " " + g.urat + " " + g.kode)}">
+          ${g.kode ? `<span class="kode">${esc(g.kode)}</span>` : ""}<span class="tot ${sum < 0 ? "neg" : ""}">${angka(sum)} lbr</span></div>
+          <div class="body"><h3>${esc(g.jenis)} <span class="muted">${esc(g.urat)}</span></h3>
+          <table class="var">${its.map((it) => `<tr><td>${it.panjang ?? ""} · ${kainLbl(it.kain)}</td><td class="n ${stokCls(it.stok)}">${angka(it.stok)}</td></tr>`).join("")}</table></div></div>`;
+      }).join("");
+    }
+    $("#vDaftar").hidden = mode !== "daftar"; $("#vGambar").hidden = mode !== "gambar";
+    $$("#vt button").forEach((b) => b.classList.toggle("on", b.dataset.v === mode));
     store.set("stokFilter", { q: qi.value, ...f, h: hide0.checked });
   };
   $("#chips").addEventListener("click", (e) => {
@@ -174,15 +334,21 @@ routes[""] = async () => {
     for (const key of ["j", "p", "k"]) if (key in b.dataset) f[key] = f[key] === b.dataset[key] && key !== "j" ? "" : b.dataset[key];
     paint(); apply();
   });
+  $("#vt").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; mode = b.dataset.v; store.set("stokTampilan", mode); apply(); });
   qi.addEventListener("input", apply); hide0.addEventListener("change", apply);
-  $("#tbl tbody").addEventListener("click", (e) => { const tr = e.target.closest("tr"); if (tr) location.hash = "#/produk/" + tr.dataset.sku; });
-  paint(); apply();
+  $("#tbl tbody").addEventListener("click", (e) => {
+    const tr = e.target.closest("tr"); if (!tr) return;
+    if (e.target.closest(".c-img")) { const g = groups.find((x) => x.key === e.target.closest(".c-img").querySelector("img").dataset.key); return openPhoto(g, () => { setThumbs(); apply(); }); }
+    location.hash = "#/produk/" + tr.dataset.sku;
+  });
+  $("#vGambar").addEventListener("click", (e) => { const c = e.target.closest(".pc"); if (c) openPhoto(groups.find((g) => g.key === c.dataset.key), () => { setThumbs(); apply(); }); });
+  setThumbs(); paint(); apply();
   if (matchMedia("(min-width:721px)").matches) qi.focus();
 };
 
 // ------------------------------------------------------------ Detail produk
 routes["produk"] = async ([sku]) => {
-  const s = await q(sb.from("stok").select("*").eq("sku", sku).maybeSingle(), "Memuat produk");
+  const [s] = await Promise.all([q(sb.from("stok").select("*").eq("sku", sku).maybeSingle(), "Memuat produk"), loadImages()]);
   if (!s) { view.innerHTML = `<div class="card empty">Produk tidak ditemukan.</div>`; return; }
   let hist = "";
   if (isStaff()) {
@@ -194,14 +360,20 @@ routes["produk"] = async ([sku]) => {
         <td class="num">${t.tipe === "masuk" ? "+" : "−"}${angka(t.qty)}</td><td class="num muted">${angka(saldo)}</td></tr>`;
         saldo += t.tipe === "masuk" ? -t.qty : t.qty; return row; }).join("")}</tbody></table></div>` : `<div class="card empty">Belum ada transaksi.</div>`);
   } else hist = `<p class="muted">Login sebagai karyawan untuk melihat riwayat transaksi barang ini.</p>`;
+  const key = gkey(s);
   view.innerHTML = `<p><a href="#/">← Kembali ke stok</a></p>
-  <div class="head"><div><h1>${esc(s.jenis)} ${esc(s.urat)} ${s.panjang ?? ""}</h1>
+  <div class="phead"><button class="pthumb" id="pimg" title="Lihat gambar besar"><img src="${imgUrl({ ...s, key })}" alt="${esc(s.jenis + " " + s.urat)}"></button>
+  <div class="head grow"><div><h1>${esc(s.jenis)} ${esc(s.urat)} ${s.panjang ?? ""}</h1>
     <div class="row"><span class="code">${esc(s.kode || "tanpa kode")}</span><span class="muted">SKU ${s.sku}</span>${kainBadge(s.kain)}${s.aktif ? "" : '<span class="badge b-del">nonaktif</span>'}</div></div>
-    ${isStaff() ? `<div class="row"><a class="btn in" href="#/baru?tipe=masuk&sku=${s.sku}">+ Masuk</a><a class="btn out" href="#/baru?tipe=keluar&sku=${s.sku}">− Keluar</a></div>` : ""}</div>
+    ${isStaff() ? `<div class="row"><a class="btn in" href="#/baru?tipe=masuk&sku=${s.sku}">+ Masuk</a><a class="btn out" href="#/baru?tipe=keluar&sku=${s.sku}">− Keluar</a></div>` : ""}</div></div>
   <div class="stats four"><div class="stat"><b class="stok ${stokCls(s.stok)}">${angka(s.stok)}</b><span>Stok sekarang</span></div>
     <div class="stat"><b>${angka(s.masuk)}</b><span>Total masuk</span></div><div class="stat"><b>${angka(s.keluar)}</b><span>Total keluar</span></div>
     <div class="stat"><b>${tgl(s.terakhir)}</b><span>Transaksi terakhir</span></div></div>${hist}`;
   $$("tr[data-id]").forEach((tr) => tr.addEventListener("click", () => (location.hash = "#/trx/" + tr.dataset.id)));
+  $("#pimg").addEventListener("click", async () => {
+    const all = (await getStok()).filter((r) => gkey(r) === key && (r.aktif || r.sku === s.sku));
+    openPhoto(groupRows(all)[0], () => ($("#pimg img").src = imgUrl({ ...s, key })));
+  });
 };
 
 // ------------------------------------------------------------ Login / daftar / akun
